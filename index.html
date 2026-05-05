@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Flipbook</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            /* Increased zoom: Using 90% of viewport height */
+            --book-height: 90vh;
+            --book-width: calc(var(--book-height) * 0.7); 
+        }
+
+        @media (max-width: 768px) {
+            :root {
+                --book-height: 70vh;
+                --book-width: calc(var(--book-height) * 0.7);
+            }
+        }
+
+        body {
+            background-color: #121212;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 10px;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+            perspective: 3000px; 
+            overflow: hidden;
+        }
+
+        /* The book-stage is the full width of an open book (2 pages) */
+        .book-stage {
+            position: relative;
+            width: calc(var(--book-width) * 2);
+            height: var(--book-height);
+            display: flex;
+            justify-content: flex-end; 
+            transform-style: preserve-3d;
+            margin-top: -2vh; 
+        }
+
+        .book {
+            position: relative;
+            width: var(--book-width);
+            height: var(--book-height);
+            transform-style: preserve-3d;
+        }
+
+        .page {
+            position: absolute;
+            width: var(--book-width);
+            height: var(--book-height);
+            top: 0;
+            left: 0;
+            transform-origin: left center;
+            transform-style: preserve-3d;
+            transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .page.flipped {
+            transform: rotateY(-180deg);
+        }
+
+        .front, .back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            background-color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.1), 0 10px 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+
+        .back {
+            transform: rotateY(180deg);
+        }
+
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: white;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            z-index: 100;
+            background: rgba(30, 30, 30, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 0.5rem 1.5rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .nav-btn {
+            color: #888;
+            transition: all 0.2s;
+            padding: 0.4rem;
+        }
+
+        .nav-btn:hover { color: white; transform: scale(1.1); }
+        .nav-btn:active { transform: scale(0.9); }
+
+        .spine-shadow {
+            position: absolute;
+            top: 0;
+            width: 50px;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .front .spine-shadow { left: 0; background: linear-gradient(to right, rgba(0,0,0,0.15), transparent); }
+        .back .spine-shadow { right: 0; background: linear-gradient(to left, rgba(0,0,0,0.15), transparent); }
+    </style>
+</head>
+<body>
+
+    <div class="book-stage">
+        <div class="book" id="book">
+            <!-- Pages 1-18 will be generated here -->
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="nav-btn" id="prevBtn" title="Previous">
+            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+        </button>
+        <button class="nav-btn" id="nextBtn" title="Next">
+            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </button>
+    </div>
+
+    <script>
+        const book = document.getElementById('book');
+        const totalPages = 18;
+        const numOfPapers = Math.ceil(totalPages / 2);
+        let currentPaper = 0; 
+
+        // Sound Synthesis using Web Audio API
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playFlipSound() {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            
+            const duration = 0.3;
+            const bufferSize = audioCtx.sampleRate * duration;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+
+            // Generate "White Noise" with a decay for the paper sound
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+            }
+
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            // Filter to make it sound more like "paper" (removing high harshness)
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1200, audioCtx.currentTime);
+            filter.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + duration);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime); // Low volume
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            noise.start();
+        }
+
+        function initBook() {
+            book.innerHTML = '';
+            
+            for (let i = 1; i <= numOfPapers; i++) {
+                const paper = document.createElement('div');
+                paper.className = 'page';
+                paper.style.zIndex = numOfPapers - i + 1;
+                
+                const frontIdx = (i * 2) - 1;
+                const backIdx = i * 2;
+
+                paper.innerHTML = `
+                    <div class="front">
+                        <img src="${frontIdx}.jpg" alt="Page ${frontIdx}" onerror="this.src='https://via.placeholder.com/400x560?text=Page+${frontIdx}'">
+                        <div class="spine-shadow"></div>
+                    </div>
+                    <div class="back">
+                        ${backIdx <= totalPages ? 
+                            `<img src="${backIdx}.jpg" alt="Page ${backIdx}" onerror="this.src='https://via.placeholder.com/400x560?text=Page+${backIdx}'">` : 
+                            '<div class="w-full h-full bg-zinc-100"></div>'}
+                        <div class="spine-shadow"></div>
+                    </div>
+                `;
+
+                paper.addEventListener('click', () => {
+                    if (paper.classList.contains('flipped')) {
+                        if (i === currentPaper) goPrev();
+                    } else {
+                        if (i === currentPaper + 1) goNext();
+                    }
+                });
+
+                book.appendChild(paper);
+            }
+        }
+
+        function goNext() {
+            if (currentPaper < numOfPapers) {
+                playFlipSound();
+                const papers = document.querySelectorAll('.page');
+                const paper = papers[currentPaper];
+                paper.classList.add('flipped');
+                paper.style.zIndex = currentPaper + 1;
+                currentPaper++;
+            }
+        }
+
+        function goPrev() {
+            if (currentPaper > 0) {
+                playFlipSound();
+                const papers = document.querySelectorAll('.page');
+                const paper = papers[currentPaper - 1];
+                paper.classList.remove('flipped');
+                paper.style.zIndex = numOfPapers - currentPaper + 1;
+                currentPaper--;
+            }
+        }
+
+        document.getElementById('nextBtn').onclick = goNext;
+        document.getElementById('prevBtn').onclick = goPrev;
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowRight") goNext();
+            if (e.key === "ArrowLeft") goPrev();
+        });
+
+        initBook();
+    </script>
+</body>
+</html>
