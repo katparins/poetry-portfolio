@@ -144,48 +144,22 @@
         </button>
     </div>
 
+    <!-- Hidden audio element for the flip sound -->
+    <audio id="flipSound" src="page_flip.mp3" preload="auto"></audio>
+
     <script>
         const book = document.getElementById('book');
+        const flipSound = document.getElementById('flipSound');
         const totalPages = 18;
         const numOfPapers = Math.ceil(totalPages / 2);
         let currentPaper = 0; 
 
-        // Sound Synthesis using Web Audio API
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
         function playFlipSound() {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-            
-            const duration = 0.3;
-            const bufferSize = audioCtx.sampleRate * duration;
-            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-
-            // Generate "White Noise" with a decay for the paper sound
-            for (let i = 0; i < bufferSize; i++) {
-                data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-            }
-
-            const noise = audioCtx.createBufferSource();
-            noise.buffer = buffer;
-
-            // Filter to make it sound more like "paper" (removing high harshness)
-            const filter = audioCtx.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(1200, audioCtx.currentTime);
-            filter.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + duration);
-
-            const gain = audioCtx.createGain();
-            gain.gain.setValueAtTime(0.15, audioCtx.currentTime); // Low volume
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-
-            noise.connect(filter);
-            filter.connect(gain);
-            gain.connect(audioCtx.destination);
-
-            noise.start();
+            // Reset sound to start in case of rapid clicks
+            flipSound.currentTime = 0;
+            flipSound.play().catch(e => {
+                console.log("Audio playback failed (usually requires a user gesture first):", e);
+            });
         }
 
         function initBook() {
